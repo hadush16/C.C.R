@@ -1,10 +1,11 @@
 // API Reference: https://www.wix.com/velo/reference/api-overview/introduction
-// “Hello, World!” Example: https://learn-code.wix.com/en/article/hello-world
+// Cloud Comfort Ride — Contact & Dispatch Page Controller (CONTACT.b802y.js)
+
+import { initCloudComfortPage } from 'public/veloPageBridge';
 
 $w.onReady(function () {
-    // Write your JavaScript here
-
-    // To select an element by ID use: $w('#elementID')
-
-    // Click 'Preview' to run your code
+    initCloudComfortPage($w, {
+        route: '/contact',
+        pageName: 'CONTACT'
+    });
 });

@@ -1,0 +1,151 @@
+/**
+ * Cloud Comfort Ride — Wix Velo Backend Dispatch & Booking Web Module
+ * Handles medical transportation booking requests and contact inquiries.
+ */
+import wixData from 'wix-data';
+
+const BOOKINGS_COLLECTION = 'Bookings';
+const INQUIRIES_COLLECTION = 'ContactInquiries';
+
+/**
+ * Generates a standardized Cloud Comfort Ride booking reference ID (e.g., CCR-2026-4821)
+ * @returns {string}
+ */
+function generateBookingReferenceId() {
+    const year = new Date().getFullYear();
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    return `CCR-${year}-${randomSuffix}`;
+}
+
+/**
+ * Registers a non-emergency medical transportation booking request from the frontend.
+ * Attempts to persist to the Wix Data 'Bookings' collection if present, and returns
+ * a confirmed dispatch receipt object.
+ *
+ * @param {Object} bookingPayload
+ * @returns {Promise<Object>}
+ */
+export async function submitBookingRequest(bookingPayload) {
+    if (!bookingPayload || typeof bookingPayload !== 'object') {
+        throw new Error('Invalid booking request payload.');
+    }
+
+    const bookingId = bookingPayload.id || generateBookingReferenceId();
+    const createdAt = bookingPayload.createdAt || new Date().toISOString();
+
+    const record = {
+        bookingId,
+        createdAt,
+        status: bookingPayload.status || 'pending_review',
+        serviceType: String(bookingPayload.serviceType || 'non_emergency_medical'),
+        tripType: bookingPayload.tripType === 'one_way' ? 'one_way' : 'round_trip',
+        pickupDate: String(bookingPayload.pickupDate || ''),
+        pickupTime: String(bookingPayload.pickupTime || ''),
+        returnTime: bookingPayload.returnTime ? String(bookingPayload.returnTime) : '',
+        pickupAddress: String(bookingPayload.pickupAddress || ''),
+        pickupNotes: bookingPayload.pickupNotes ? String(bookingPayload.pickupNotes) : '',
+        destinationAddress: String(bookingPayload.destinationAddress || ''),
+        facilityName: bookingPayload.facilityName ? String(bookingPayload.facilityName) : '',
+        destinationNotes: bookingPayload.destinationNotes ? String(bookingPayload.destinationNotes) : '',
+        passengerName: String(bookingPayload.passengerName || ''),
+        passengerPhone: String(bookingPayload.passengerPhone || ''),
+        passengerEmail: String(bookingPayload.passengerEmail || ''),
+        mobilityNeed: String(bookingPayload.mobilityNeed || 'ambulatory'),
+        hasCompanion: Boolean(bookingPayload.hasCompanion),
+        companionCount: Number(bookingPayload.companionCount || 0),
+        hasStairs: Boolean(bookingPayload.hasStairs),
+        specialInstructions: bookingPayload.specialInstructions ? String(bookingPayload.specialInstructions) : '',
+        source: 'wix-cloud-comfort-ride'
+    };
+
+    try {
+        const inserted = await wixData.insert(BOOKINGS_COLLECTION, record, {
+            suppressAuth: true
+        });
+        return {
+            ok: true,
+            persistedToCollection: true,
+            bookingId,
+            record: inserted
+        };
+    } catch (err) {
+        // Graceful fallback if the Wix Data collection has not been provisioned yet in Content Manager
+        return {
+            ok: true,
+            persistedToCollection: false,
+            bookingId,
+            record
+        };
+    }
+}
+
+/**
+ * Registers a contact / dispatch inquiry submitted from the Contact page.
+ *
+ * @param {Object} inquiryPayload
+ * @returns {Promise<Object>}
+ */
+export async function submitContactInquiry(inquiryPayload) {
+    if (!inquiryPayload || typeof inquiryPayload !== 'object') {
+        throw new Error('Invalid contact inquiry payload.');
+    }
+
+    const record = {
+        name: String(inquiryPayload.name || ''),
+        email: String(inquiryPayload.email || ''),
+        phone: inquiryPayload.phone ? String(inquiryPayload.phone) : '',
+        subject: String(inquiryPayload.subject || 'General Inquiry / Medical Transport'),
+        message: String(inquiryPayload.message || ''),
+        timestamp: inquiryPayload.timestamp || new Date().toISOString(),
+        source: 'wix-cloud-comfort-ride'
+    };
+
+    try {
+        const inserted = await wixData.insert(INQUIRIES_COLLECTION, record, {
+            suppressAuth: true
+        });
+        return {
+            ok: true,
+            persistedToCollection: true,
+            inquiry: inserted
+        };
+    } catch (err) {
+        return {
+            ok: true,
+            persistedToCollection: false,
+            inquiry: record
+        };
+    }
+}
+
+/**
+ * Searches bookings stored in Wix Data by booking ID, passenger name, or phone number.
+ *
+ * @param {string} searchQuery
+ * @returns {Promise<Object>}
+ */
+export async function getBookingsByContact(searchQuery) {
+    const queryText = String(searchQuery || '').trim();
+    try {
+        let query = wixData.query(BOOKINGS_COLLECTION).descending('createdAt').limit(50);
+        if (queryText) {
+            query = wixData
+                .query(BOOKINGS_COLLECTION)
+                .contains('bookingId', queryText)
+                .or(wixData.query(BOOKINGS_COLLECTION).contains('passengerName', queryText))
+                .or(wixData.query(BOOKINGS_COLLECTION).contains('passengerPhone', queryText))
+                .descending('createdAt')
+                .limit(50);
+        }
+        const results = await query.find({ suppressAuth: true });
+        return {
+            ok: true,
+            items: results.items || []
+        };
+    } catch (err) {
+        return {
+            ok: true,
+            items: []
+        };
+    }
+}
